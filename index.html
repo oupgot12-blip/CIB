@@ -74,7 +74,10 @@
         </div>
         <div id="pin-box" class="glass-panel p-6 md:p-10 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10 flex flex-col items-center w-full max-w-sm transform transition-all relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cib-yellow to-transparent opacity-50"></div>
-            <div class="w-14 h-14 md:w-16 md:h-16 bg-cib-yellow/10 rounded-2xl flex items-center justify-center mb-5 border border-cib-yellow/20"><i data-lucide="lock" class="w-7 h-7 text-cib-yellow"></i></div>
+            
+            <!-- โลโก้ TCSD ตรงกลางแทนช่องสี่เหลี่ยม/กุญแจ -->
+            <img src="tcsd-logo.png" alt="TCSD Logo" class="w-20 h-24 md:w-24 md:h-28 object-contain mb-5 drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:scale-105 transition-transform duration-300">
+            
             <h2 class="text-xl md:text-2xl font-heading font-bold text-white mb-2 tracking-wide">เข้าสู่ระบบ ฝอ.</h2>
             <p class="text-xs md:text-sm text-slate-400 mb-8 font-light text-center">กรุณาป้อนรหัส PIN 4 หลัก</p>
             <div class="flex gap-3 md:gap-4 mb-6">
@@ -262,8 +265,13 @@
                             <!-- ปุ่ม Fetch ถูกซ่อน เพราะเราใช้ Realtime Listener ดึงข้อมูลให้อัตโนมัติอยู่แล้ว -->
                             <div class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium text-slate-400"><i data-lucide="wifi" class="w-3 h-3 text-emerald-400"></i> เชื่อมต่อฐานข้อมูลแล้ว</div>
                             
-                            <div id="statusBox" class="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-white/5 text-slate-400 border border-white/10 transition-colors">
-                                <i id="statusIcon" data-lucide="check-circle-2" class="w-4 h-4"></i><span id="statusText">พร้อมใช้งาน</span>
+                            <div class="flex items-center gap-3">
+                                <button onclick="exportToCSV()" class="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30 transition-colors">
+                                    <i data-lucide="download" class="w-4 h-4"></i> Export (CSV)
+                                </button>
+                                <div id="statusBox" class="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-white/5 text-slate-400 border border-white/10 transition-colors">
+                                    <i id="statusIcon" data-lucide="check-circle-2" class="w-4 h-4"></i><span id="statusText">พร้อมใช้งาน</span>
+                                </div>
                             </div>
                         </div>
                         <div class="overflow-x-auto w-full custom-scrollbar pb-2">
@@ -350,12 +358,12 @@
         // =========================================================
         let firebaseConfig = {
             apiKey: "AIzaSyAPmMcE1cRzROB7J8K68FEqI9-0nwEEsU4",
-  authDomain: "backup-appci.firebaseapp.com",
-  projectId: "backup-appci",
-  storageBucket: "backup-appci.firebasestorage.app",
-  messagingSenderId: "996394088451",
-  appId: "1:996394088451:web:4166b43fd308a0e3143636",
-  measurementId: "G-NDR0ERJ190"
+            authDomain: "backup-appci.firebaseapp.com",
+            projectId: "backup-appci",
+            storageBucket: "backup-appci.firebasestorage.app",
+            messagingSenderId: "996394088451",
+            appId: "1:996394088451:web:4166b43fd308a0e3143636",
+            measurementId: "G-NDR0ERJ190"
         };
 
         // โค้ดส่วนนี้มีไว้เพื่อให้รันและทดสอบแบบ Real-time ในระบบจำลองนี้ได้ทันที (ไม่ต้องแก้ไข)
@@ -708,10 +716,12 @@
             validMonthData.forEach(d => {
                 let dateStr = (d.col1 || '').trim();
                 if (!dateStr) return; 
-                if (!dailyStats[dateStr]) dailyStats[dateStr] = { draft: 0, inProgress: 0, completed: 0 };
-                let status = String(d.col6 || '').trim();
+                if (!dailyStats[dateStr]) dailyStats[dateStr] = { draft: 0, presenting: 0, completed: 0 };
+                
+                // ดึงข้อมูลจาก col17 (สถานะหนังสือ)
+                let status = String(d.col17 || '').trim();
                 if (status === 'ตั้งแท่น') dailyStats[dateStr].draft++;
-                else if (status === 'อยู่ระหว่างดำเนินการ') dailyStats[dateStr].inProgress++;
+                else if (status === 'อยู่ระหว่างนำเสนอ') dailyStats[dateStr].presenting++;
                 else if (status === 'เสร็จสิ้น') dailyStats[dateStr].completed++;
             });
 
@@ -727,20 +737,20 @@
                 return dateStr;
             });
 
-            let cumulativeDraft = 0, cumulativeInProgress = 0, cumulativeCompleted = 0;
-            let dailyDraftData = [], dailyInProgressData = [], dailyCompletedData = [];
+            let cumulativeDraft = 0, cumulativePresenting = 0, cumulativeCompleted = 0;
+            let dailyDraftData = [], dailyPresentingData = [], dailyCompletedData = [];
 
             sortedDates.forEach(date => {
                 cumulativeDraft += dailyStats[date].draft;
-                cumulativeInProgress += dailyStats[date].inProgress;
+                cumulativePresenting += dailyStats[date].presenting;
                 cumulativeCompleted += dailyStats[date].completed;
                 dailyDraftData.push(cumulativeDraft);
-                dailyInProgressData.push(cumulativeInProgress);
+                dailyPresentingData.push(cumulativePresenting);
                 dailyCompletedData.push(cumulativeCompleted);
             });
 
             if (sortedDates.length === 0) {
-                dailyLabels = ['ไม่มีข้อมูล']; dailyDraftData = [0]; dailyInProgressData = [0]; dailyCompletedData = [0];
+                dailyLabels = ['ไม่มีข้อมูล']; dailyDraftData = [0]; dailyPresentingData = [0]; dailyCompletedData = [0];
             }
 
             statusPieChart = new Chart(ctxPie, {
@@ -775,7 +785,7 @@
                         labels: dailyLabels, 
                         datasets: [
                             { label: 'ตั้งแท่น (สะสม)', data: dailyDraftData, borderColor: '#f472b6', backgroundColor: 'rgba(244, 114, 182, 0.1)', borderWidth: 3, pointBackgroundColor: '#040914', pointBorderColor: '#f472b6', pointBorderWidth: 2, pointRadius: 4, fill: false, tension: 0.4 },
-                            { label: 'ดำเนินการ (สะสม)', data: dailyInProgressData, borderColor: '#FFC72C', backgroundColor: 'rgba(255, 199, 44, 0.1)', borderWidth: 3, pointBackgroundColor: '#040914', pointBorderColor: '#FFC72C', pointBorderWidth: 2, pointRadius: 4, fill: false, tension: 0.4 },
+                            { label: 'อยู่ระหว่างนำเสนอ (สะสม)', data: dailyPresentingData, borderColor: '#FFC72C', backgroundColor: 'rgba(255, 199, 44, 0.1)', borderWidth: 3, pointBackgroundColor: '#040914', pointBorderColor: '#FFC72C', pointBorderWidth: 2, pointRadius: 4, fill: false, tension: 0.4 },
                             { label: 'เสร็จสิ้น (สะสม)', data: dailyCompletedData, borderColor: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', borderWidth: 3, pointBackgroundColor: '#040914', pointBorderColor: '#34d399', pointBorderWidth: 2, pointRadius: 4, fill: false, tension: 0.4 }
                         ] 
                     },
@@ -1245,6 +1255,50 @@
             });
             lucide.createIcons();
         }
+
+        // ------------------ ฟังก์ชัน Export ข้อมูลเป็นไฟล์ CSV ------------------
+        window.exportToCSV = function() {
+            // จับคู่หัวตารางให้เป็นภาษาไทย
+            const headerMap = {
+                col1: 'วันที่', col2: 'เลขรับ บก.', col3: '03/05', col4: 'เรื่อง',
+                col5: 'ผู้รับผิดชอบ', col14: 'กก.ที่รับเรื่อง', col19: 'เอกสารเพื่อทราบ/เพื่อดำเนินงาน',
+                col15: 'กก.ตอบงาน', col13: 'วันกำหนดส่ง', col16: 'เลขหนังสือ/ลงวันที่',
+                col17: 'สถานะหนังสือ', col18: 'หน่วยที่รับเรื่อง', col6: 'สถานะเอกสาร',
+                col7: 'เลขหนังสือส่ง/ลงวันที่', col8: 'วันที่เสร็จ', col9: 'ประชุม/ไม่ประชุม',
+                col10: 'ผู้เข้าประชุม', col11: 'ช่องทางแจ้ง', col12: 'สถานะช่องทางแจ้ง', col20: 'จัดเก็บเอกสาร'
+            };
+
+            // ใส่ \uFEFF ด้านหน้าเพื่อให้ Excel/Sheets อ่านภาษาไทยได้ถูกต้อง (BOM)
+            let csvContent = "\uFEFF"; 
+            
+            // 1. สร้างแถว Header (หัวตาราง)
+            let headersRow = columns.map(col => `"${headerMap[col] || col}"`).join(",");
+            csvContent += headersRow + "\r\n";
+
+            // 2. กรองเฉพาะแถวที่มีข้อมูล (ไม่เอาแถวว่างๆ)
+            const exportData = data.filter(d => (d.col1 && d.col1.trim() !== '') || (d.col4 && d.col4.trim() !== ''));
+            
+            // 3. วนลูปนำข้อมูลใส่ในแต่ละแถว
+            exportData.forEach(row => {
+                let rowData = columns.map(col => {
+                    let cellData = row[col] || "";
+                    // ล้างเครื่องหมาย " ซ้อนทับกัน เพื่อไม่ให้ไฟล์ CSV พัง
+                    cellData = cellData.toString().replace(/"/g, '""');
+                    return `"${cellData}"`;
+                });
+                csvContent += rowData.join(",") + "\r\n";
+            });
+
+            // 4. สร้างไฟล์และสั่งให้เบราว์เซอร์ดาวน์โหลด
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `เอกสาร_ฝอ_${currentMonthFilter}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
 
         populateMonthYear(); switchPage('dashboard');
     </script>
