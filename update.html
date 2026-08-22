@@ -79,7 +79,7 @@
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 1. ตั้งค่า Firebase (ตรวจสอบความถูกต้องเรียบร้อย)
+        // 1. ตั้งค่า Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAPmMcE1cRzROB7J8K68FEqI9-0nwEEsU4",
             authDomain: "backup-appci.firebaseapp.com",
@@ -131,17 +131,35 @@
             try {
                 // เข้าระบบแบบไม่ระบุตัวตน
                 await signInAnonymously(auth);
-
                 log("⏳ กำลังดาวน์โหลดข้อมูลจาก Google Sheets...");
                 
-                // ใช้ Proxy เพื่อป้องกันการบล็อกของเบราว์เซอร์
-                const proxyUrl = "https://api.allorigins.win/raw?url=";
-                const fetchUrl = proxyUrl + encodeURIComponent(sheetCSVUrl + "&t=" + Date.now());
+                let csvText = "";
                 
-                const response = await fetch(fetchUrl);
-                if (!response.ok) throw new Error("โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่า Google Sheets ตั้งค่าแชร์สาธารณะแล้ว");
-                
-                const csvText = await response.text();
+                // ลองวิธีที่ 1 (ดึงผ่าน API เพื่อหลบ Safari)
+                try {
+                    const proxyUrl1 = "https://api.allorigins.win/get?url=";
+                    const response1 = await fetch(proxyUrl1 + encodeURIComponent(sheetCSVUrl + "&t=" + Date.now()));
+                    if (!response1.ok) throw new Error("Proxy 1 error");
+                    const json1 = await response1.json();
+                    csvText = json1.contents;
+                } catch (err1) {
+                    log("🔄 Safari บล็อกช่องทางแรก กำลังเปลี่ยนช่องทางสำรอง...");
+                    
+                    // ลองวิธีที่ 2 (ดึงผ่าน corsproxy)
+                    try {
+                        const proxyUrl2 = "https://corsproxy.io/?";
+                        const response2 = await fetch(proxyUrl2 + encodeURIComponent(sheetCSVUrl + "&t=" + Date.now()));
+                        if (!response2.ok) throw new Error("Proxy 2 error");
+                        csvText = await response2.text();
+                    } catch (err2) {
+                        throw new Error("ระบบรักษาความปลอดภัยของ Safari แน่นหนามากครับ! 😅 แนะนำให้ก๊อปปี้ลิงก์นี้ไปเปิดในแอป Google Chrome แทน จะใช้งานได้ 100% ครับ");
+                    }
+                }
+
+                if (!csvText || csvText.trim() === "") {
+                    throw new Error("ไม่พบข้อมูลใน Sheets");
+                }
+
                 const rows = parseCSV(csvText);
                 
                 if (rows.length < 2) {
