@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="th" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>อัปเดตข้อมูลเข้า Firebase</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            font-family: 'Prompt', sans-serif; 
+            background-color: #040914; 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+        }
+        .glass-panel { 
+            background: rgba(17, 34, 64, 0.7); 
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            padding: 2rem; 
+            border-radius: 1rem; 
+            text-align: center; 
+            max-width: 500px; 
+            width: 90%; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+        }
+        button { 
+            background-color: #3b82f6; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            font-size: 16px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            margin-top: 20px; 
+            font-weight: bold; 
+            width: 100%; 
+            transition: all 0.2s; 
+        }
+        button:hover { 
+            background-color: #2563eb; 
+            transform: scale(1.02); 
+        }
+        button:disabled { 
+            background-color: #475569; 
+            cursor: not-allowed; 
+            transform: scale(1); 
+        }
+        #status { 
+            margin-top: 20px; 
+            font-size: 14px; 
+            color: #cbd5e1; 
+            white-space: pre-wrap; 
+            text-align: left; 
+            background: #0f172a; 
+            padding: 15px; 
+            border-radius: 8px; 
+            height: 200px; 
+            overflow-y: auto; 
+            border: 1px solid #1e325c; 
+        }
+    </style>
+</head>
+<body>
+    <div class="glass-panel">
+        <h2 class="text-xl font-bold text-white mb-2">🔄 ระบบอัปเดตข้อมูล (Sync All)</h2>
+        <p class="text-sm text-slate-400 mb-4">ดึงข้อมูลใหม่จาก Google Sheets เข้าสู่ Firebase<br>ระบบจะทำการเขียนทับข้อมูลเดิมเพื่อป้องกันความซ้ำซ้อน</p>
+        
+        <button id="startBtn">🚀 เริ่มอัปเดตข้อมูล</button>
+        <div id="status">พร้อมทำงาน... คลิกที่ปุ่มด้านบนเพื่อเริ่มดึงข้อมูล</div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ตั้งค่า Firebase เริ่มต้น
+        const firebaseConfig = {
+            apiKey: "AIzaSyAPmMce1cRzROB7J8K68FEqI9-0nwEEsU4",
+            authDomain: "backup-appci.firebaseapp.com",
+            projectId: "backup-appci",
+            storageBucket: "backup-appci.firebasestorage.app",
+            messagingSenderId: "996394088451",
+            appId: "1:996394088451:web:4166b43fd308a0e3143636",
+            measurementId: "G-NDR0ERJ190"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'cib-document-app';
+
+        // URL ดึงข้อมูล CSV จาก Google Sheets
+        const sheetCSVUrl = "https://docs.google.com/spreadsheets/d/1ut4UwxfR3n_6Ecly7ZvNTh4zjEuFsW4m0uGk5GiOfo4/export?format=csv&gid=390837469";
+
+        const startBtn = document.getElementById('startBtn');
+        const statusDiv = document.getElementById('status');
+
+        function log(msg) {
+            statusDiv.innerHTML += `<div>${msg}</div>`;
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+        }
+
+        // ฟังก์ชันอ่านไฟล์ CSV แบบรองรับลูกน้ำในเครื่องหมายคำพูด
+        function parseCSV(str) {
+            const arr = [];
+            let quote = false;
+            for (let row = 0, col = 0, c = 0; c < str.length; c++) {
+                let cc = str[c], nc = str[c+1];
+                arr[row] = arr[row] || [];
+                arr[row][col] = arr[row][col] || '';
+                if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+                if (cc == '"') { quote = !quote; continue; }
+                if (cc == ',' && !quote) { ++col; continue; }
+                if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+                if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+                arr[row][col] += cc;
+            }
+            return arr;
+        }
+
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            statusDiv.innerHTML = "";
+            log("🔒 กำลังเชื่อมต่อระบบความปลอดภัย...");
+
+            try {
+                await signInAnonymously(auth);
+
+                log("⏳ กำลังดาวน์โหลดข้อมูลจาก Google Sheets...");
+                
+                // ใช้ Proxy เพื่อทะลุบล็อก
+                const proxyUrl = "https://api.allorigins.win/raw?url=";
+                const fetchUrl = proxyUrl + encodeURIComponent(sheetCSVUrl + "&t=" + Date.now());
+                
+                const response = await fetch(fetchUrl);
+                if (!response.ok) throw new Error("โหลดข้อมูลไม่สำเร็จ");
+                
+                const csvText = await response.text();
+                const rows = parseCSV(csvText);
+                
+                if (rows.length < 2) {
+                    log("❌ ไม่พบข้อมูลใน Sheets หรือรูปแบบผิดพลาด");
+                    startBtn.disabled = false; return;
+                }
+
+                const headers = rows[0];
+                log(`✅ ดึงข้อมูลสำเร็จ! พบทั้งหมด ${rows.length - 1} แถว`);
+                log("⏳ กำลังเขียนข้อมูลทับใน Firebase... (ห้ามปิดหน้าต่างนี้)");
+
+                let successCount = 0;
+                
+                for (let i = 1; i < rows.length; i++) {
+                    const rowData = rows[i];
+                    if (!rowData || rowData.length === 0 || (!rowData[0] && !rowData[3])) continue;
+
+                    let docData = {};
+                    headers.forEach((header, index) => {
+                        docData[`col${index + 1}`] = rowData[index] || ""; 
+                    });
+
+                    let monthVal = "";
+                    let yearVal = "";
+                    if (docData.col1) {
+                        let parts = docData.col1.split('-');
+                        if (parts.length >= 2) {
+                            yearVal = parts[0];
+                            monthVal = `${parts[0]}-${parts[1]}`;
+                        } else if (docData.col1.includes('/')) {
+                            let slashParts = docData.col1.split('/');
+                            if(slashParts.length === 3) {
+                                yearVal = slashParts[2];
+                                monthVal = `${slashParts[2]}-${slashParts[1].padStart(2, '0')}`;
+                            }
+                        }
+                    }
+                    docData.month = monthVal;
+                    docData.year = yearVal;
+                    docData.id = `doc_${i}`;
+
+                    const docId = `doc_${i}`;
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'documents', docId);
+                    
+                    await setDoc(docRef, docData);
+                    successCount++;
+                    
+                    if (successCount % 10 === 0) {
+                        log(`... ซิงค์เรียบร้อยแล้ว ${successCount} รายการ`);
+                    }
+                }
+
+                log(`<br>🎉 <b>อัปเดตเสร็จสมบูรณ์! ทั้งหมด ${successCount} รายการ</b>`);
+                log("👉 ข้อมูลของคุณอัปเดตเรียบร้อยแล้ว ลองเปิดเว็บตัวหลักดูได้เลยครับ!");
+
+            } catch (error) {
+                log(`<span style="color: #ef4444;">❌ เกิดข้อผิดพลาด: ${error.message}</span>`);
+            }
+            startBtn.disabled = false;
+        });
+    </script>
+</body>
+</html>
