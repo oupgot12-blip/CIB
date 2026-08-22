@@ -79,9 +79,9 @@
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // ตั้งค่า Firebase เริ่มต้น
+        // 1. ตั้งค่า Firebase (ตรวจสอบความถูกต้องเรียบร้อย)
         const firebaseConfig = {
-            apiKey: "AIzaSyAPmMce1cRzROB7J8K68FEqI9-0nwEEsU4",
+            apiKey: "AIzaSyAPmMcE1cRzROB7J8K68FEqI9-0nwEEsU4",
             authDomain: "backup-appci.firebaseapp.com",
             projectId: "backup-appci",
             storageBucket: "backup-appci.firebasestorage.app",
@@ -93,9 +93,8 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        
         const appId = 'cib-document-app';
-
-        // URL ดึงข้อมูล CSV จาก Google Sheets
         const sheetCSVUrl = "https://docs.google.com/spreadsheets/d/1ut4UwxfR3n_6Ecly7ZvNTh4zjEuFsW4m0uGk5GiOfo4/export?format=csv&gid=390837469";
 
         const startBtn = document.getElementById('startBtn');
@@ -106,7 +105,6 @@
             statusDiv.scrollTop = statusDiv.scrollHeight;
         }
 
-        // ฟังก์ชันอ่านไฟล์ CSV แบบรองรับลูกน้ำในเครื่องหมายคำพูด
         function parseCSV(str) {
             const arr = [];
             let quote = false;
@@ -131,23 +129,23 @@
             log("🔒 กำลังเชื่อมต่อระบบความปลอดภัย...");
 
             try {
+                // เข้าระบบแบบไม่ระบุตัวตน
                 await signInAnonymously(auth);
 
                 log("⏳ กำลังดาวน์โหลดข้อมูลจาก Google Sheets...");
                 
-                // ใช้ Proxy เพื่อทะลุบล็อก
+                // ใช้ Proxy เพื่อป้องกันการบล็อกของเบราว์เซอร์
                 const proxyUrl = "https://api.allorigins.win/raw?url=";
                 const fetchUrl = proxyUrl + encodeURIComponent(sheetCSVUrl + "&t=" + Date.now());
                 
                 const response = await fetch(fetchUrl);
-                if (!response.ok) throw new Error("โหลดข้อมูลไม่สำเร็จ");
+                if (!response.ok) throw new Error("โหลดข้อมูลไม่สำเร็จ กรุณาตรวจสอบว่า Google Sheets ตั้งค่าแชร์สาธารณะแล้ว");
                 
                 const csvText = await response.text();
                 const rows = parseCSV(csvText);
                 
                 if (rows.length < 2) {
-                    log("❌ ไม่พบข้อมูลใน Sheets หรือรูปแบบผิดพลาด");
-                    startBtn.disabled = false; return;
+                    throw new Error("ไม่พบข้อมูลใน Sheets หรือรูปแบบผิดพลาด");
                 }
 
                 const headers = rows[0];
@@ -158,6 +156,7 @@
                 
                 for (let i = 1; i < rows.length; i++) {
                     const rowData = rows[i];
+                    
                     if (!rowData || rowData.length === 0 || (!rowData[0] && !rowData[3])) continue;
 
                     let docData = {};
@@ -182,9 +181,10 @@
                     }
                     docData.month = monthVal;
                     docData.year = yearVal;
-                    docData.id = `doc_${i}`;
-
+                    
                     const docId = `doc_${i}`;
+                    docData.id = docId;
+
                     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'documents', docId);
                     
                     await setDoc(docRef, docData);
